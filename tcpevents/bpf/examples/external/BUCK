@@ -1,0 +1,26 @@
+cxx_library(
+  name = 'libbcc',
+  exported_post_linker_flags = [
+    '-lbcc',
+  ]
+)
+
+cxx_binary(
+  name = 'HelloWorld',
+  srcs = [
+    'HelloWorld.cpp',
+  ],
+  deps = [
+    ':libbcc',
+  ],
+)
+
+cxx_binary(
+  name = 'RandomRead',
+  srcs = [
+    'RandomRead.cpp',
+  ],
+  deps = [
+    ':libbcc',
+  ]
+)

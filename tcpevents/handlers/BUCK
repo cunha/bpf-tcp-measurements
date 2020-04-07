@@ -1,0 +1,28 @@
+cxx_library(
+  name = 'handlers',
+  srcs = [
+    'TcpEventCsvExporter.cpp',
+    'TcpEventExporter.cpp',
+    'TcpEventJsonExporter.cpp',
+    'TcpEventTxtExporter.cpp',
+  ],
+  headers = [
+    'TcpEventCsvExporter.h',
+    'TcpEventExporter.h',
+    'TcpEventJsonExporter.h',
+    'TcpEventTxtExporter.h',
+  ],
+  exported_headers = [
+    'TcpEventCsvExporter.h',
+    'TcpEventExporter.h',
+    'TcpEventJsonExporter.h',
+    'TcpEventTxtExporter.h',
+  ],
+  deps = [
+    '//src/tcpevents/collector:event',
+    '//src/third_party/nlohmann-json:json',
+  ],
+  visibility = [
+    'PUBLIC',
+  ],
+)

@@ -1,0 +1,34 @@
+cxx_library(
+  name = 'init',
+  srcs = [
+    'Init.cpp',
+  ],
+  headers = [
+    'Init.h',
+  ],
+  exported_headers = [
+    'Init.h',
+  ],
+  visibility = [
+    'PUBLIC',
+  ],
+)
+
+cxx_library(
+  name = 'signalhandler',
+  srcs = [
+    'SignalHandler.cpp',
+  ],
+  headers = [
+    'SignalHandler.h',
+  ],
+  exported_headers = [
+    'SignalHandler.h',
+  ],
+  deps = [
+    '//src/third_party/folly:folly',
+  ],
+  visibility = [
+    'PUBLIC',
+  ],
+)

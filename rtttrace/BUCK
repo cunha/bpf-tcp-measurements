@@ -1,0 +1,27 @@
+cxx_library(
+  name = 'RttTraceBaseClientLibs',
+  exported_post_linker_flags = [
+    '-lstdc++fs',
+    '-lbcc',
+  ],
+)
+
+cxx_binary(
+  name = 'RttTraceBaseClient',
+  srcs = [
+    'main.cpp',
+    'RttTraceCollector.cpp',
+  ],
+  headers = [
+    'RttTraceCollector.h',
+    'bpf/BpfStructs.h',
+  ],
+  deps = [
+    '//src/common:init',
+    '//src/common:signalhandler',
+    ':RttTraceBaseClientLibs',
+  ],
+  # compiler_flags = [
+  #   '-DEVDEBUG',
+  # ],
+)

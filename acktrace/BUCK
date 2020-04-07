@@ -1,0 +1,27 @@
+cxx_library(
+  name = 'AckTraceBaseClientLibs',
+  exported_post_linker_flags = [
+    '-lstdc++fs',
+    '-lbcc',
+  ],
+)
+
+cxx_binary(
+  name = 'AckTraceBaseClient',
+  srcs = [
+    'main.cpp',
+    'AckTraceCollector.cpp',
+  ],
+  headers = [
+    'AckTraceCollector.h',
+    'bpf/BpfStructs.h',
+  ],
+  deps = [
+    '//src/common:init',
+    '//src/common:signalhandler',
+    ':AckTraceBaseClientLibs',
+  ],
+  # compiler_flags = [
+  #   '-DEVDEBUG',
+  # ],
+)

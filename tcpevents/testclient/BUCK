@@ -1,0 +1,16 @@
+cxx_binary(
+  name = 'TcpEventsBaseClient',
+  srcs = [
+    'main.cpp',
+    'BaseTcpEventHandler.cpp',
+  ],
+  headers = [
+    'BaseTcpEventHandler.h',
+  ],
+  deps = [
+    '//src/common:init',
+    '//src/common:signalhandler',
+    '//src/tcpevents/collector:collector',
+    '//src/tcpevents/handlers:handlers',
+  ]
+)

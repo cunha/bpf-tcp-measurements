@@ -1,0 +1,24 @@
+cxx_library(
+  name = 'RttEventsBaseClientLibs',
+  exported_post_linker_flags = [
+    '-lstdc++fs',
+    '-lbcc',
+  ],
+)
+
+cxx_binary(
+  name = 'RttEventsBaseClient',
+  srcs = [
+    'main.cpp',
+    'RttEventCollector.cpp',
+  ],
+  headers = [
+    'RttEventCollector.h',
+    'bpf/BpfStructs.h',
+  ],
+  deps = [
+    '//src/common:init',
+    '//src/common:signalhandler',
+    ':RttEventsBaseClientLibs',
+  ]
+)

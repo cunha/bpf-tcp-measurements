@@ -1,0 +1,47 @@
+cxx_library(
+  name = 'event',
+  srcs = [
+    'TcpEvent.cpp',
+  ],
+  headers = [
+    'bpf/BpfStructs.h',
+    'bpf/CppEnums.h',
+    'TcpEvent.h',
+  ],
+  exported_headers = [
+    'bpf/BpfStructs.h',
+    'bpf/CppEnums.h',
+    'TcpEvent.h',
+  ],
+  deps = [
+    '//src/third_party/fatal:fatal',
+    '//src/third_party/folly:folly',
+  ],
+  visibility = [
+    'PUBLIC',
+  ],
+)
+
+cxx_library(
+  name = 'collector',
+  srcs = [
+    'TcpEventCollector.cpp',
+  ],
+  headers = [
+    'TcpEventCollector.h',
+  ],
+  exported_headers = [
+    'TcpEventCollector.h',
+  ],
+  exported_post_linker_flags = [
+    '-lstdc++fs',
+    '-lbcc',
+  ],
+  deps = [
+    ':event',
+    '//src/third_party/folly:folly',
+  ],
+  visibility = [
+    'PUBLIC',
+  ],
+)

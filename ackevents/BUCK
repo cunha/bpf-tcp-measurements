@@ -1,0 +1,27 @@
+cxx_library(
+  name = 'AckEventsBaseClientLibs',
+  exported_post_linker_flags = [
+    '-lstdc++fs',
+    '-lbcc',
+  ],
+)
+
+cxx_binary(
+  name = 'AckEventsBaseClient',
+  srcs = [
+    'main.cpp',
+    'AckEventCollector.cpp',
+  ],
+  headers = [
+    'AckEventCollector.h',
+    'bpf/BpfStructs.h',
+  ],
+  deps = [
+    '//src/common:init',
+    '//src/common:signalhandler',
+    ':AckEventsBaseClientLibs',
+  ],
+  # compiler_flags = [
+  #   '-DEVDEBUG',
+  # ],
+)

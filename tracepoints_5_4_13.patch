@@ -1,0 +1,233 @@
+diff -paur /usr/src/linux-source-5.4/include/linux/skbuff.h linux-source-5.4/include/linux/skbuff.h
+--- /usr/src/linux-source-5.4/include/linux/skbuff.h	2020-02-07 12:17:10.000000000 -0300
++++ linux-source-5.4/include/linux/skbuff.h	2020-03-13 19:34:33.410152896 -0300
+@@ -717,7 +717,7 @@ struct sk_buff {
+ 	 * want to keep them across layers you have to do a skb_clone()
+ 	 * first. This is owned by whoever has the skb queued ATM.
+ 	 */
+-	char			cb[48] __aligned(8);
++	char			cb[52] __aligned(8);
+ 
+ 	union {
+ 		struct {
+diff -paur /usr/src/linux-source-5.4/include/linux/tcp.h linux-source-5.4/include/linux/tcp.h
+--- /usr/src/linux-source-5.4/include/linux/tcp.h	2020-01-17 15:49:08.000000000 -0300
++++ linux-source-5.4/include/linux/tcp.h	2020-03-07 15:03:51.373548456 -0300
+@@ -395,6 +395,11 @@ struct tcp_sock {
+ 	 */
+ 	struct request_sock __rcu *fastopen_rsk;
+ 	u32	*saved_syn;
++
++	/* congestion/detection over BPF; socket key is
++	 * (init_clock_ns, src, dst, srcport, dstport) */
++	u64 cd_init_clock_ns;
++	u16 cd_random_u16;
+ };
+ 
+ enum tsq_enum {
+diff -paur /usr/src/linux-source-5.4/include/net/tcp.h linux-source-5.4/include/net/tcp.h
+--- /usr/src/linux-source-5.4/include/net/tcp.h	2020-01-17 15:49:08.000000000 -0300
++++ linux-source-5.4/include/net/tcp.h	2020-03-13 19:34:51.998298011 -0300
+@@ -846,6 +846,7 @@ struct tcp_skb_cb {
+ 			has_rxtstamp:1,	/* SKB has a RX timestamp	*/
+ 			unused:5;
+ 	__u32		ack_seq;	/* Sequence number ACK'd	*/
++	__u32		packets_in_flight;	/* Packets in flight at time of last transmission */
+ 	union {
+ 		struct {
+ 			/* There is space for up to 24 bytes */
+diff -paur /usr/src/linux-source-5.4/include/trace/events/tcp.h linux-source-5.4/include/trace/events/tcp.h
+--- /usr/src/linux-source-5.4/include/trace/events/tcp.h	2020-01-17 15:49:08.000000000 -0300
++++ linux-source-5.4/include/trace/events/tcp.h	2020-03-13 19:38:19.147550384 -0300
+@@ -224,6 +224,130 @@ TRACE_EVENT(tcp_retransmit_synack,
+ 		  __entry->saddr_v6, __entry->daddr_v6)
+ );
+ 
++TRACE_EVENT(tcp_cong_control,
++
++	TP_PROTO(struct sock *sk, u32 ack, u32 acked_sacked,
++	         int flag, const struct rate_sample *rs),
++
++	TP_ARGS(sk, ack, acked_sacked, flag, rs),
++
++	TP_STRUCT__entry(
++		__field(const void *, skaddr)
++		__field(__u16, sport)
++		__field(__u16, dport)
++		__array(__u8, saddr, 4)
++		__array(__u8, daddr, 4)
++		__array(__u8, saddr_v6, 16)
++		__array(__u8, daddr_v6, 16)
++		__field(const struct rate_sample *, rsaddr)
++	),
++
++	TP_fast_assign(
++		struct inet_sock *inet = inet_sk(sk);
++		__be32 *p32;
++
++		__entry->skaddr = sk;
++
++		__entry->sport = ntohs(inet->inet_sport);
++		__entry->dport = ntohs(inet->inet_dport);
++
++		p32 = (__be32 *) __entry->saddr;
++		*p32 = inet->inet_saddr;
++
++		p32 = (__be32 *) __entry->daddr;
++		*p32 = inet->inet_daddr;
++
++		TP_STORE_ADDRS(__entry, inet->inet_saddr, inet->inet_daddr,
++		               sk->sk_v6_rcv_saddr, sk->sk_v6_daddr);
++
++		__entry->rsaddr = rs;
++	),
++
++	TP_printk("sport=%hu dport=%hu saddr=%pI4 daddr=%pI4 saddrv6=%pI6c daddrv6=%pI6c delivered=%d interval_us=%ld rtt_us=%ld",
++		  __entry->sport, __entry->dport,
++		  __entry->saddr, __entry->daddr,
++		  __entry->saddr_v6, __entry->daddr_v6,
++		  __entry->rsaddr->delivered, __entry->rsaddr->interval_us, __entry->rsaddr->rtt_us)
++);
++
++/* trace_tcp_skb_acked is called inside tcp_clean_rtx_queue when bytes
++ * are cumulatively acked and removed from the retransmission queue.
++ * This tracepoint is useful to check which SKBs were retransmitted,
++ * SACK'd, D-SACK'd, and lost. It also allows detecting cases of
++ * spurious retransmissions. The parameter fully_acked is set to false
++ * for SKBs that are partially acked; in this case the user can inspect
++ * orig_seq and tp->snd_una (and acked_pcount if necessary) to check
++ * what has been acked. This is necessary as tcp_clean_rtx_queue mangles
++ * (trims the head of) the current SKB if it is partially acked. Care is
++ * taken to ensure trace_tcp_skb_acked is called even if acked_pcount is
++ * zero (i.e., when less than one MSS worth of bytes are acked and
++ * trimmed from the head of the SKB). */
++TRACE_EVENT(tcp_skb_acked,
++
++	TP_PROTO(struct sock *sk, struct sk_buff *skb,
++	         bool fully_acked, bool first_acked, u32 orig_seq, u32 acked_pcount),
++
++	TP_ARGS(sk, skb, fully_acked, first_acked, orig_seq, acked_pcount),
++
++	TP_STRUCT__entry(
++		__field(const void *, skaddr)
++		__field(const void *, skbaddr)
++		__field(__u16, sport)
++		__field(__u16, dport)
++		__array(__u8, saddr, 4)
++		__array(__u8, daddr, 4)
++		__array(__u8, saddr_v6, 16)
++		__array(__u8, daddr_v6, 16)
++		__field(bool, fully_acked)
++		__field(bool, first_acked)
++		__field(__u32, orig_seq)
++		__field(__u32, end_seq)
++		__field(__u32, snd_una)
++		__field(__u32, acked_pcount)
++		__field(__u8, sacked)
++	),
++
++	TP_fast_assign(
++		struct inet_sock *inet = inet_sk(sk);
++		struct tcp_sock *tp = tcp_sk(sk);
++		struct tcp_skb_cb *scb = TCP_SKB_CB(skb);
++
++		__be32 *p32;
++
++		__entry->skaddr = sk;
++		__entry->skbaddr = skb;
++
++		__entry->sport = ntohs(inet->inet_sport);
++		__entry->dport = ntohs(inet->inet_dport);
++
++		p32 = (__be32 *) __entry->saddr;
++		*p32 = inet->inet_saddr;
++
++		p32 = (__be32 *) __entry->daddr;
++		*p32 = inet->inet_daddr;
++
++		TP_STORE_ADDRS(__entry, inet->inet_saddr, inet->inet_daddr,
++		               sk->sk_v6_rcv_saddr, sk->sk_v6_daddr);
++
++		__entry->fully_acked = fully_acked;
++		__entry->first_acked = first_acked;
++		__entry->orig_seq = orig_seq;
++		__entry->end_seq = scb->end_seq;
++		__entry->snd_una = tp->snd_una;
++		__entry->acked_pcount = acked_pcount;
++		__entry->sacked = scb->sacked;
++	),
++
++	TP_printk("sport=%hu dport=%hu saddr=%pI4 daddr=%pI4 saddrv6=%pI6c daddrv6=%pI6c fully_acked=%s first_acked=%s orig_seq=%d end_seq=%d snd_una=%d acked_pcount=%d sacked=0x%hhx",
++		  __entry->sport, __entry->dport,
++		  __entry->saddr, __entry->daddr,
++		  __entry->saddr_v6, __entry->daddr_v6,
++		  __entry->fully_acked ? "true" : "false",
++		  __entry->first_acked ? "true" : "false",
++		  __entry->orig_seq, __entry->end_seq, __entry->snd_una,
++		  __entry->acked_pcount, __entry->sacked)
++);
++
+ #include <trace/events/net_probe_common.h>
+ 
+ TRACE_EVENT(tcp_probe,
+diff -paur /usr/src/linux-source-5.4/net/ipv4/tcp_input.c linux-source-5.4/net/ipv4/tcp_input.c
+--- /usr/src/linux-source-5.4/net/ipv4/tcp_input.c	2020-01-17 15:49:08.000000000 -0300
++++ linux-source-5.4/net/ipv4/tcp_input.c	2020-03-15 18:57:11.809087825 -0300
+@@ -3102,11 +3102,17 @@ static int tcp_clean_rtx_queue(struct so
+ 				break;
+ 
+ 			acked_pcount = tcp_tso_acked(sk, skb);
++
++			trace_tcp_skb_acked(sk, skb, false, first_ackt == 0,
++					start_seq, acked_pcount);
++
+ 			if (!acked_pcount)
+ 				break;
+ 			fully_acked = false;
+ 		} else {
+ 			acked_pcount = tcp_skb_pcount(skb);
++			trace_tcp_skb_acked(sk, skb, true, first_ackt == 0,
++					start_seq, acked_pcount);
+ 		}
+ 
+ 		if (unlikely(sacked & TCPCB_RETRANS)) {
+@@ -3323,6 +3329,8 @@ static void tcp_cong_control(struct sock
+ {
+ 	const struct inet_connection_sock *icsk = inet_csk(sk);
+ 
++	trace_tcp_cong_control(sk, ack, acked_sacked, flag, rs);
++
+ 	if (icsk->icsk_ca_ops->cong_control) {
+ 		icsk->icsk_ca_ops->cong_control(sk, rs);
+ 		return;
+diff -paur /usr/src/linux-source-5.4/net/ipv4/tcp_minisocks.c linux-source-5.4/net/ipv4/tcp_minisocks.c
+--- /usr/src/linux-source-5.4/net/ipv4/tcp_minisocks.c	2020-01-17 15:49:08.000000000 -0300
++++ linux-source-5.4/net/ipv4/tcp_minisocks.c	2020-03-07 15:03:52.309558767 -0300
+@@ -548,6 +548,15 @@ struct sock *tcp_create_openreq_child(co
+ 	newtp->fastopen_req = NULL;
+ 	RCU_INIT_POINTER(newtp->fastopen_rsk, NULL);
+ 
++	/* Variables initialized here; tcp_init_sock is called only when
++	 * an application creates a socket. For connection received on
++	 * sockets in the LISTEN state, the kernel uses minisocks and
++	 * only creates a new socket (for real) when the 3-way handshake
++	 * terminates and the connection is ready to go into the
++	 * TCP_ESTABLISHED state. */
++	newtp->cd_init_clock_ns = tcp_clock_ns();
++	get_random_bytes(&(newtp->cd_random_u16), 2);
++
+ 	__TCP_INC_STATS(sock_net(sk), TCP_MIB_PASSIVEOPENS);
+ 
+ 	return newsk;
+diff -paur /usr/src/linux-source-5.4/net/ipv4/tcp_output.c linux-source-5.4/net/ipv4/tcp_output.c
+--- /usr/src/linux-source-5.4/net/ipv4/tcp_output.c	2020-01-17 15:49:08.000000000 -0300
++++ linux-source-5.4/net/ipv4/tcp_output.c	2020-03-15 15:28:35.189420886 -0300
+@@ -1037,6 +1037,8 @@ static int __tcp_transmit_skb(struct soc
+ 	if (clone_it) {
+ 		TCP_SKB_CB(skb)->tx.in_flight = TCP_SKB_CB(skb)->end_seq
+ 			- tp->snd_una;
++		TCP_SKB_CB(skb)->packets_in_flight = tcp_packets_in_flight(tp);
++
+ 		oskb = skb;
+ 
+ 		tcp_skb_tsorted_save(oskb) {

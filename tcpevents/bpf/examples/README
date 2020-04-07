@@ -1,0 +1,23 @@
+# BPF examples
+
+### `external:HelloWorld`
+
+- Attaches via kprobe to syscall `clone`.
+- Dumps an event to tracepipe when `clone` is called.
+- C++ program listens for and prints events from tracepipe.
+
+```
+buck build src/tcpevents/bpf/examples/external:HelloWorld && \
+  sudo buck-out/gen/src/tcpevents/bpf/examples/external/HelloWorld
+```
+
+### `external:RandomRead`
+
+- Attaches to the tracepoint `random:urandom_read`.
+- Dumps an event to perf map each time tracepoint is hit.
+- C++ program listens for and prints events from perf map.
+
+```
+buck build src/tcpevents/bpf/examples/external:RandomRead && \
+  sudo buck-out/gen/src/tcpevents/bpf/examples/external/RandomRead
+```
