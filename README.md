@@ -1,6 +1,6 @@
-# TCP Events Tracker
+# TCP BPF monitors
 
-The TCP events tracker hooks into several kernel locations using BPF to
+The TCP monitors use BPF to hook into several kernel locations and
 track information from TCP and store it in a database.
 
 ## Installation and dependencies
